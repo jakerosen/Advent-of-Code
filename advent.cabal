@@ -1,0 +1,18 @@
+cabal-version: 2.4
+name: onirim
+version: 0
+
+executable advent
+  main-is: Main.hs
+  build-depends:
+      base
+    , text
+  default-extensions:
+      ScopedTypeVariables
+    , OverloadedStrings
+    , DerivingStrategies
+    , DeriveGeneric
+    , TypeApplications
+    , DataKinds
+    , OverloadedLabels
+  ghc-options: -Wall
