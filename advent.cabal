@@ -8,6 +8,8 @@ executable advent
       base
     , text
     , lens
+    , vector
+    , primitive
   default-extensions:
       ScopedTypeVariables
     , OverloadedStrings
