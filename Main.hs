@@ -13,9 +13,11 @@ import Data.Vector.Unboxed (Vector, (//), (!))
 import qualified Data.Vector.Unboxed as V
 import qualified Data.Vector.Unboxed.Mutable as V
 import Control.Monad.Primitive
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as HS
 
 main :: IO ()
-main = day2p2
+main = day3p1
 
 day1p1 :: IO ()
 day1p1 = do
@@ -133,3 +135,67 @@ runIntCode i v = do
       runIntCode (i + 4) v
     99 -> pure v
     _ -> error "Input was bad or machine failed"
+
+day3p1 :: IO ()
+day3p1 = do
+  [input1 :: [Text], input2 :: [Text]] <-
+    map (T.splitOn ",") <$> readLines "data/day3-1"
+  let
+    -- input1 :: [Text]
+    -- input1 = ["R8", "U5", "L5", "D3"]
+
+    -- input2 :: [Text]
+    -- input2 = ["U7", "R6", "D4", "L4"]
+
+    paths1 :: [Path]
+    paths1 = map parsePath input1
+
+    paths2 :: [Path]
+    paths2 = map parsePath input2
+
+    wire1 :: HashSet Coord
+    wire1 = wireCoords (0,0) paths1
+
+    wire2 :: HashSet Coord
+    wire2 = wireCoords (0,0) paths2
+
+    intersections :: HashSet Coord
+    intersections = HS.intersection wire1 wire2
+
+    ans :: Int
+    ans = minimum $ map l1FromOrigin (HS.toList intersections)
+
+  print ans
+
+data Path = PathUp Int | PathDown Int | PathLeft Int | PathRight Int
+
+type Coord = (Int, Int)
+
+l1FromOrigin :: Coord -> Int
+l1FromOrigin (x, y) = abs x + abs y
+
+parsePath :: Text -> Path
+parsePath t = case T.head t of
+  'U' -> PathUp (tToI (T.tail t))
+  'D' -> PathDown (tToI (T.tail t))
+  'L' -> PathLeft (tToI (T.tail t))
+  'R' -> PathRight (tToI (T.tail t))
+  _ -> undefined -- shouldn't happen
+
+runPath :: Coord -> Path -> [Coord]
+runPath (a, b) p = case p of
+  PathUp x -> zip (repeat a) (map (b+) [x, x-1 .. 1])
+  PathDown x -> zip (repeat a) (map (b-) [x, x-1 .. 1])
+  PathLeft x -> zip (map (a-) [x, x-1 .. 1]) (repeat b)
+  PathRight x -> zip (map (a+) [x, x-1 .. 1]) (repeat b)
+
+wireCoords :: Coord -> [Path] -> HashSet Coord
+wireCoords start paths = HS.delete start coords -- start doesn't count
+  where
+    f :: [Coord] -> Path ->  [Coord]
+    f [] _ = []
+    f (x:xs) p = runPath x p
+
+    coords :: HashSet Coord
+    -- coords = HS.fromList $ concat (scanr f [start] (reverse paths))
+    coords = HS.fromList $ concat (scanl f [start] paths)

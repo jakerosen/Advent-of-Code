@@ -10,6 +10,8 @@ executable advent
     , lens
     , vector
     , primitive
+    -- , sets
+    , unordered-containers
   default-extensions:
       ScopedTypeVariables
     , OverloadedStrings
