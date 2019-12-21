@@ -12,6 +12,9 @@ executable advent
     , primitive
     -- , sets
     , unordered-containers
+    , hashable
+    , containers
+    , reducers
   default-extensions:
       ScopedTypeVariables
     , OverloadedStrings

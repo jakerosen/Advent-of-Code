@@ -15,9 +15,15 @@ import qualified Data.Vector.Unboxed.Mutable as V
 import Control.Monad.Primitive
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HS
+import Data.Hashable
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+import Data.Coerce
+import Data.Semigroup
+import Data.Semigroup.Union
 
 main :: IO ()
-main = day3p1
+main = day3p2
 
 day1p1 :: IO ()
 day1p1 = do
@@ -168,6 +174,7 @@ day3p1 = do
   print ans
 
 data Path = PathUp Int | PathDown Int | PathLeft Int | PathRight Int
+  deriving Show
 
 type Coord = (Int, Int)
 
@@ -199,3 +206,96 @@ wireCoords start paths = HS.delete start coords -- start doesn't count
     coords :: HashSet Coord
     -- coords = HS.fromList $ concat (scanr f [start] (reverse paths))
     coords = HS.fromList $ concat (scanl f [start] paths)
+
+data WireCoord = WireCoord
+  { wireCoord :: Coord
+  , wireSteps :: Int
+  } deriving (Show)
+
+instance Eq WireCoord where
+  (WireCoord a _) == (WireCoord b _) = a == b
+
+instance Hashable WireCoord where
+  hash a = hash (wireCoord a)
+  hashWithSalt x a = hashWithSalt x (wireCoord a)
+
+extractWireCoord :: WireCoord -> (Coord, Int)
+extractWireCoord (WireCoord x y) = (x, y)
+
+runPathP2 :: WireCoord -> Path -> [WireCoord]
+runPathP2 (WireCoord (a, b) step) p = case p of
+  PathUp x -> zipWith3 (\u v w -> WireCoord (u, v) w)
+    (repeat a)
+    (map (b+) [x, x-1 .. 1])
+    [step + x, step + x - 1..]
+  PathDown x -> zipWith3 (\u v w -> WireCoord (u, v) w)
+    (repeat a)
+    (map (b-) [x, x-1 .. 1])
+    [step + x, step + x - 1..]
+  PathLeft x -> zipWith3 (\u v w -> WireCoord (u, v) w)
+    (map (a-) [x, x-1 .. 1])
+    (repeat b)
+    [step + x, step + x - 1..]
+  PathRight x -> zipWith3 (\u v w -> WireCoord (u, v) w)
+    (map (a+) [x, x-1 .. 1])
+    (repeat b)
+    [step + x, step + x - 1..]
+
+wireCoordsP2 :: Coord -> [Path] -> Map Coord Int
+wireCoordsP2 start paths = M.delete start coords -- start doesn't count
+  where
+    f :: [WireCoord] -> Path ->  [WireCoord]
+    f [] _ = []
+    f (x:xs) p = runPathP2 x p
+
+    g :: WireCoord -> WireCoord -> Bool
+    g (WireCoord a x) (WireCoord b y) = a == b && x >= y
+
+    coordList :: [(Coord, Int)]
+    coordList =
+      map extractWireCoord (concat (scanl f [WireCoord start 0] paths))
+
+    foo :: (Coord, Int) -> Map Coord Int
+    foo = uncurry M.singleton
+
+    coords :: Map Coord Int
+    coords = coerce $ foldMap
+      (coerce foo :: (Coord, Int) -> (UnionWith (Map Coord)) (Min Int))
+      coordList
+
+day3p2 :: IO ()
+day3p2 = do
+  [input1 :: [Text], input2 :: [Text]] <-
+    map (T.splitOn ",") <$> readLines "data/day3-1"
+  let
+    -- input1 :: [Text]
+    -- input1 = ["R8", "U5", "L5", "D3"]
+
+    -- input2 :: [Text]
+    -- input2 = ["U7", "R6", "D4", "L4"]
+
+    paths1 :: [Path]
+    paths1 = map parsePath input1
+
+    paths2 :: [Path]
+    paths2 = map parsePath input2
+
+    wire1 :: Map Coord Int
+    wire1 = wireCoordsP2 (0,0) paths1
+
+    wire2 :: Map Coord Int
+    wire2 = wireCoordsP2 (0,0) paths2
+
+    intersections :: Map Coord Int
+    intersections = M.intersectionWith (+) wire1 wire2
+
+    intersectList :: [(Coord, Int)]
+    intersectList = M.toList intersections
+
+    minIntersect :: (Coord, Int)
+    minIntersect = minimumBy (\(_, a) (_, b) -> compare a b) intersectList
+
+    ans :: Int
+    ans = snd minIntersect
+
+  print ans
