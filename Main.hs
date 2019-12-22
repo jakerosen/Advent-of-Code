@@ -23,7 +23,7 @@ import Data.Semigroup
 import Data.Semigroup.Union
 
 main :: IO ()
-main = day4p2
+main = day5p2
 
 day1p1 :: IO ()
 day1p1 = do
@@ -56,7 +56,7 @@ readLines :: FilePath -> IO [Text]
 readLines file = T.lines <$> T.readFile file
 
 tToI :: Integral a => Text -> a
-tToI t = (fromRight undefined $ T.decimal t) ^. _1
+tToI t = (fromRight undefined $ T.signed T.decimal t) ^. _1
 
 day2p1 :: IO ()
 day2p1 = do
@@ -114,7 +114,20 @@ runIntCode
   -> IO Memory      -- resulting state
 runIntCode i v = do
   cmd <- V.read v i
-  case cmd of
+  let
+    paramModes :: Int
+    opcode :: Int
+    (paramModes, opcode) = cmd `divMod` 100
+
+    pMode1 :: Int
+    pMode1 = paramModes `mod` 10
+
+    pMode2 :: Int
+    pMode2 = paramModes `div` 10 `mod` 10
+
+    pMode3 :: Int
+    pMode3 = paramModes `div` 100
+  case opcode of
     1 -> do
       let
         xii = i + 1
@@ -122,9 +135,18 @@ runIntCode i v = do
         zi = i + 3
       xi <- V.read v xii
       yi <- V.read v yii
-      x <- V.read v xi
-      y <- V.read v yi
-      z <- V.read v zi
+      x <- case pMode1 of
+        0 -> V.read v xi
+        1 -> pure xi
+        _ -> error "bad param mode"
+      y <- case pMode2 of
+        0 -> V.read v yi
+        1 -> pure yi
+        _ -> error "bad param mode"
+      z <- case pMode3 of
+        0 -> V.read v zi
+        1 -> pure zi
+        _ -> error "bad param mode"
       V.write v z (x + y)
       runIntCode (i + 4) v
     2 -> do
@@ -134,10 +156,111 @@ runIntCode i v = do
         zi = i + 3
       xi <- V.read v xii
       yi <- V.read v yii
-      x <- V.read v xi
-      y <- V.read v yi
-      z <- V.read v zi
+      x <- case pMode1 of
+        0 -> V.read v xi
+        1 -> pure xi
+        _ -> error "bad param mode"
+      y <- case pMode2 of
+        0 -> V.read v yi
+        1 -> pure yi
+        _ -> error "bad param mode"
+      z <- case pMode3 of
+        0 -> V.read v zi
+        1 -> pure zi
+        _ -> error "bad param mode"
       V.write v z (x * y)
+      runIntCode (i + 4) v
+    3 -> do
+      let
+        xi = i + 1
+      x <- case pMode1 of
+        0 -> V.read v xi
+        1 -> pure xi
+        _ -> error "bad param mode"
+      n :: Int <- read <$> getLine
+      V.write v x n
+      runIntCode (i + 2) v
+    4 -> do
+      let
+        xi = i + 1
+      x <- case pMode1 of
+        0 -> V.read v xi
+        1 -> pure xi
+        _ -> error "bad param mode"
+      n <- V.read v x
+      print n
+      runIntCode (i + 2) v
+    5 -> do
+      let
+        xii = i + 1
+        yii = i + 2
+      xi <- V.read v xii
+      yi <- V.read v yii
+      x <- case pMode1 of
+        0 -> V.read v xi
+        1 -> pure xi
+        _ -> error "bad param mode"
+      y <- case pMode2 of
+        0 -> V.read v yi
+        1 -> pure yi
+        _ -> error "bad param mode"
+      if x == 0 then runIntCode (i + 3) v else runIntCode y v
+    6 -> do
+      let
+        xii = i + 1
+        yii = i + 2
+      xi <- V.read v xii
+      yi <- V.read v yii
+      x <- case pMode1 of
+        0 -> V.read v xi
+        1 -> pure xi
+        _ -> error "bad param mode"
+      y <- case pMode2 of
+        0 -> V.read v yi
+        1 -> pure yi
+        _ -> error "bad param mode"
+      if x == 0 then runIntCode y v else runIntCode (i + 3) v
+    7 -> do
+      let
+        xii = i + 1
+        yii = i + 2
+        zi = i + 3
+      xi <- V.read v xii
+      yi <- V.read v yii
+      x <- case pMode1 of
+        0 -> V.read v xi
+        1 -> pure xi
+        _ -> error "bad param mode"
+      y <- case pMode2 of
+        0 -> V.read v yi
+        1 -> pure yi
+        _ -> error "bad param mode"
+      z <- case pMode3 of
+        0 -> V.read v zi
+        1 -> pure zi
+        _ -> error "bad param mode"
+      if x < y then V.write v z 1 else V.write v z 0
+      runIntCode (i + 4) v
+    8 -> do
+      let
+        xii = i + 1
+        yii = i + 2
+        zi = i + 3
+      xi <- V.read v xii
+      yi <- V.read v yii
+      x <- case pMode1 of
+        0 -> V.read v xi
+        1 -> pure xi
+        _ -> error "bad param mode"
+      y <- case pMode2 of
+        0 -> V.read v yi
+        1 -> pure yi
+        _ -> error "bad param mode"
+      z <- case pMode3 of
+        0 -> V.read v zi
+        1 -> pure zi
+        _ -> error "bad param mode"
+      if x == y then V.write v z 1 else V.write v z 0
       runIntCode (i + 4) v
     99 -> pure v
     _ -> error "Input was bad or machine failed"
@@ -363,3 +486,20 @@ day4PassCriteriaP2 x = day4PassCriteria x && c
   where
     c :: Bool
     c = elem 2 $ map length (group (show x))
+
+day5p1 :: IO ()
+day5p1 = do
+  contents :: Text <- T.stripEnd <$> T.readFile "data/day5-1"
+  let
+    vals :: [Int]
+    vals = tToI <$> T.splitOn "," contents
+
+    initial :: Vector Int
+    initial = V.fromList vals
+
+  mem :: Memory <- V.thaw initial
+  result :: Vector Int <- runIntCode 0 mem >>= V.freeze
+  print result
+
+day5p2 :: IO ()
+day5p2 = day5p1
