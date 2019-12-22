@@ -23,7 +23,7 @@ import Data.Semigroup
 import Data.Semigroup.Union
 
 main :: IO ()
-main = day3p2
+main = day4p2
 
 day1p1 :: IO ()
 day1p1 = do
@@ -299,3 +299,67 @@ day3p2 = do
     ans = snd minIntersect
 
   print ans
+
+day4p1 :: IO ()
+day4p1 = do
+  let
+    lo :: Int
+    lo = 278384
+
+    hi :: Int
+    hi = 824795
+
+  -- print (day4PassCriteria 221)
+  -- print (day4PassCriteria 223)
+  -- print (day4PassCriteria 111111)
+  -- print (day4PassCriteria 223450)
+  -- print (day4PassCriteria 123789)
+  -- print (day4PassCriteria lo)
+  -- print (day4PassCriteria hi)
+  print (length $ filter day4PassCriteria [lo..hi])
+
+day4PassCriteria :: Int -> Bool
+day4PassCriteria x = if n == 0 then False else u && v
+  where
+    n :: Int
+    r :: Int
+    (n, r) = x `divMod` 10
+    (u, v) = loop n r False
+
+    loop :: Int -> Int -> Bool -> (Bool, Bool)
+    loop 0 _ c = (c, True)
+    loop x y c = if y >= r then loop n r c' else (c', False)
+      where
+        n :: Int
+        r :: Int
+        (n, r) = x `divMod` 10
+
+        c' :: Bool
+        c' = c || y == r
+
+day4p2 :: IO ()
+day4p2 = do
+  let
+    lo :: Int
+    lo = 278384
+
+    hi :: Int
+    hi = 824795
+
+  -- print (day4PassCriteriaP2 344)
+  -- print (day4PassCriteriaP2 44)
+  -- print (day4PassCriteriaP2 3444)
+  -- print (day4PassCriteria 001111)
+  -- print (day4PassCriteriaP2 001111)
+  -- print (day4PassCriteriaP2 112233)
+  -- print (day4PassCriteriaP2 123444)
+  -- print (day4PassCriteriaP2 111122)
+  -- print (day4PassCriteria lo)
+  -- print (day4PassCriteria hi)
+  print (length $ filter day4PassCriteriaP2 [lo..hi])
+
+day4PassCriteriaP2 :: Int -> Bool
+day4PassCriteriaP2 x = day4PassCriteria x && c
+  where
+    c :: Bool
+    c = elem 2 $ map length (group (show x))
