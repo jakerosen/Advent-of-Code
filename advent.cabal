@@ -15,6 +15,7 @@ executable advent
     , hashable
     , containers
     , reducers
+    , algebraic-graphs
   default-extensions:
       ScopedTypeVariables
     , OverloadedStrings
@@ -23,4 +24,5 @@ executable advent
     , TypeApplications
     , DataKinds
     , OverloadedLabels
+    , BlockArguments
   ghc-options: -Wall

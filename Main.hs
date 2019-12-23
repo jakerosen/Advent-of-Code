@@ -1,29 +1,36 @@
 module Main where
 
-import Data.List
-import Data.Maybe
+import Algebra.Graph.AdjacencyMap (AdjacencyMap)
+import qualified Algebra.Graph.AdjacencyMap as AM
+import Control.Lens
+import Control.Monad.Primitive
+import Data.Coerce
 import Data.Either
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as HS
+import Data.Hashable
+import Data.List
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+import Data.Maybe
+import Data.Semigroup
+import Data.Semigroup.Union
+import Data.Set (Set)
+import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.Text.Read as T
-import Control.Lens
-import Data.Vector.Unboxed.Mutable (IOVector)
-import Data.Vector.Unboxed (Vector, (//), (!))
+import Data.Vector.Unboxed ((!), (//), Vector)
 import qualified Data.Vector.Unboxed as V
+import Data.Vector.Unboxed.Mutable (IOVector)
 import qualified Data.Vector.Unboxed.Mutable as V
-import Control.Monad.Primitive
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as HS
-import Data.Hashable
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
-import Data.Coerce
-import Data.Semigroup
-import Data.Semigroup.Union
+import Debug.Trace
+import Data.Sequence (Seq ((:<|)), (|>), (><))
+import qualified Data.Sequence as Seq
 
 main :: IO ()
-main = day5p2
+main = day6p2
 
 day1p1 :: IO ()
 day1p1 = do
@@ -503,3 +510,154 @@ day5p1 = do
 
 day5p2 :: IO ()
 day5p2 = day5p1
+
+day6p1 :: IO ()
+day6p1 = do
+  orbits :: [(Text, Text)] <- map parseOrbit <$> readLines "data/day6-1"
+  let
+    orbitCount :: Map Text Int
+    orbitCount = countOrbits orbits
+
+    ans :: Int
+    ans = sum (M.elems orbitCount)
+  print ans
+  -- print orbitCount
+
+parseOrbit :: Text -> (Text, Text)
+parseOrbit t =
+  let [a, b] = T.splitOn ")" t
+  in (a, b)
+
+countOrbits
+  :: [(Text, Text)]
+  -> Map Text Int
+countOrbits orbits = go orbits M.empty M.empty
+  where
+    go
+      :: [(Text, Text)]
+      -> Map Text Int
+      -> Map Text (Set Text)
+      -> Map Text Int
+    go [] orbitCount _ = orbitCount
+    go ((x,y):orbits) orbitCount orbitedBy =
+      let
+        yCount :: Int
+        yCount = case M.lookup x orbitCount of
+          Nothing -> 1
+          Just xCount -> 1 + xCount
+
+        orbitCount' :: Map Text Int
+        orbitCount' = M.insert
+          y
+          yCount
+          orbitCount
+
+        orbitCount'' :: Map Text Int
+        orbitCount'' = case M.lookup y orbitedBy of
+          Nothing -> orbitCount'
+          Just planets ->
+            updateAll
+              yCount
+              (S.toList planets)
+              orbitedBy
+              orbitCount'
+
+        -- y orbits x
+        orbitedBy' :: Map Text (Set Text)
+        orbitedBy' = case M.lookup x orbitedBy of
+          Nothing -> M.insert x (S.singleton y) orbitedBy
+          Just ps -> M.insert x (S.insert y ps) orbitedBy
+
+        in go orbits orbitCount'' orbitedBy'
+
+    update
+      :: Int
+      -> Text
+      -> Map Text (Set Text)
+      -> Map Text Int
+      -> Map Text Int
+    update bump planet orbitedBy orbitCount =
+      let
+        orbitCount' :: Map Text Int
+        orbitCount' = M.alter (Just . maybe bump (+bump)) planet orbitCount
+        -- case M.lookup planet orbitCount of
+        --   Nothing -> M.insert planet bump orbitCount
+        --   Just count -> M.insert planet (count + bump) orbitCount
+
+        planets :: [Text]
+        planets = case M.lookup planet orbitedBy of
+          Nothing -> []
+          Just ps -> S.toList ps
+      in
+        updateAll bump planets orbitedBy orbitCount'
+
+    updateAll
+      :: Int
+      -> [Text]
+      -> Map Text (Set Text)
+      -> Map Text Int
+      -> Map Text Int
+    updateAll bump planets orbitedBy =
+      appEndo $ foldMap
+        (coerce f :: Text -> Endo (Map Text Int))
+        planets
+      where
+        f :: Text -> Map Text Int -> Map Text Int
+        f p = update bump p orbitedBy
+
+day6p2 :: IO ()
+day6p2 = do
+  orbits :: [(Text, Text)] <- map parseOrbit <$> readLines "data/day6-1"
+  let
+    graph :: Graph Text
+    graph = makeGraph orbits
+
+  -- undefined
+  print (bfs "YOU" "SAN" graph)
+  -- print (graph)
+  -- print (M.lookup "ZZC" graph)
+  -- print (M.lookup "YOU" graph)
+  -- print (M.lookup "SAN" graph)
+
+type Graph a = Map a (Set a)
+
+addEdge :: Ord a => Graph a -> (a, a) -> Graph a
+addEdge m (a, b) =
+  let
+    put :: Ord a => a -> Maybe (Set a) -> Maybe (Set a)
+    put x s = Just $ maybe (S.singleton x) (S.insert x) s
+
+    m' = M.alter (put b) a m
+  in     M.alter (put a) b m'
+
+makeGraph :: Ord a => [(a, a)] -> Graph a
+makeGraph = foldl' addEdge M.empty
+
+bfs :: forall a. (Ord a, Show a) => a -> a -> Graph a -> Maybe Int
+bfs src end graph = go (S.empty) (Seq.fromList [(src, 0)])
+  where
+    go :: Set a -> Seq (a, Int) -> Maybe Int
+    go _ Seq.Empty = Nothing
+    go visited ((x, n) :<| queue) = do
+      let
+        visited' :: Set a
+        visited' = S.insert x visited
+
+        neighbors :: Set a
+        neighbors = case M.lookup x graph of
+          Nothing -> S.empty
+          Just ps -> ps
+
+        neighbors' :: [a]
+        neighbors' = S.toList $ neighbors `S.difference` visited
+
+        toAdd :: Seq (a, Int)
+        toAdd = Seq.fromList $ zip neighbors' (repeat (n+1))
+
+        queue' :: Seq (a, Int)
+        queue' = queue >< toAdd
+
+      if x == end then Just n else go visited' queue'
+
+makeAlgebraGraph :: [(Text, Text)] -> AdjacencyMap Text
+makeAlgebraGraph = AM.edges
