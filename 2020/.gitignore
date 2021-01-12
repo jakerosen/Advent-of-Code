@@ -1,2 +1,5 @@
 dist-newstyle/
 screenshots/
+.ghcid
+.envrc
+hie.yaml
