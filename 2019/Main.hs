@@ -1,5 +1,4 @@
 module Main where
-
 import Algebra.Graph.AdjacencyMap (AdjacencyMap)
 import qualified Algebra.Graph.AdjacencyMap as AM
 import Control.Lens
@@ -28,9 +27,17 @@ import qualified Data.Vector.Unboxed.Mutable as V
 import Debug.Trace
 import Data.Sequence (Seq ((:<|)), (|>), (><))
 import qualified Data.Sequence as Seq
+import Control.Algebra
+import Control.Carrier.State.Strict
+import Control.Carrier.Writer.Strict
+import Control.Carrier.Reader
+import Control.Carrier.Error.Either
+import Control.Monad.IO.Class
+
+import IntCode
 
 main :: IO ()
-main = day6p2
+main = day7p2
 
 day1p1 :: IO ()
 day1p1 = do
@@ -76,7 +83,7 @@ day2p1 = do
     init = V.fromList vals
 
   mem :: Memory <- V.thaw init
-  result :: Vector Int <- runIntCode 0 mem >>= V.freeze
+  result :: Vector Int <- runIntCodeLegacy 0 mem >>= V.freeze
   print result
 
 day2p2 :: IO ()
@@ -99,7 +106,7 @@ day2p2 = do
     vs = map f is
 
   mem :: [Memory] <- traverse V.thaw vs
-  result :: [Vector Int] <- traverse (runIntCode 0) mem >>= traverse V.freeze
+  result :: [Vector Int] <- traverse (runIntCodeLegacy 0) mem >>= traverse V.freeze
   let
     vec :: Vector Int
     vec = fromJust $ find (\v -> V.head v == 19690720) result
@@ -110,167 +117,6 @@ day2p2 = do
     y :: Int
     y = vec ! 2
   print (x * 100 + y)
-
-type Memory = IOVector Int
-
--- This function should recursively parse the whole memory, computing the
--- final result
-runIntCode
-  :: Int         -- index to read
-  -> Memory      -- initial state
-  -> IO Memory      -- resulting state
-runIntCode i v = do
-  cmd <- V.read v i
-  let
-    paramModes :: Int
-    opcode :: Int
-    (paramModes, opcode) = cmd `divMod` 100
-
-    pMode1 :: Int
-    pMode1 = paramModes `mod` 10
-
-    pMode2 :: Int
-    pMode2 = paramModes `div` 10 `mod` 10
-
-    pMode3 :: Int
-    pMode3 = paramModes `div` 100
-  case opcode of
-    1 -> do
-      let
-        xii = i + 1
-        yii = i + 2
-        zi = i + 3
-      xi <- V.read v xii
-      yi <- V.read v yii
-      x <- case pMode1 of
-        0 -> V.read v xi
-        1 -> pure xi
-        _ -> error "bad param mode"
-      y <- case pMode2 of
-        0 -> V.read v yi
-        1 -> pure yi
-        _ -> error "bad param mode"
-      z <- case pMode3 of
-        0 -> V.read v zi
-        1 -> pure zi
-        _ -> error "bad param mode"
-      V.write v z (x + y)
-      runIntCode (i + 4) v
-    2 -> do
-      let
-        xii = i + 1
-        yii = i + 2
-        zi = i + 3
-      xi <- V.read v xii
-      yi <- V.read v yii
-      x <- case pMode1 of
-        0 -> V.read v xi
-        1 -> pure xi
-        _ -> error "bad param mode"
-      y <- case pMode2 of
-        0 -> V.read v yi
-        1 -> pure yi
-        _ -> error "bad param mode"
-      z <- case pMode3 of
-        0 -> V.read v zi
-        1 -> pure zi
-        _ -> error "bad param mode"
-      V.write v z (x * y)
-      runIntCode (i + 4) v
-    3 -> do
-      let
-        xi = i + 1
-      x <- case pMode1 of
-        0 -> V.read v xi
-        1 -> pure xi
-        _ -> error "bad param mode"
-      n :: Int <- read <$> getLine
-      V.write v x n
-      runIntCode (i + 2) v
-    4 -> do
-      let
-        xi = i + 1
-      x <- case pMode1 of
-        0 -> V.read v xi
-        1 -> pure xi
-        _ -> error "bad param mode"
-      n <- V.read v x
-      print n
-      runIntCode (i + 2) v
-    5 -> do
-      let
-        xii = i + 1
-        yii = i + 2
-      xi <- V.read v xii
-      yi <- V.read v yii
-      x <- case pMode1 of
-        0 -> V.read v xi
-        1 -> pure xi
-        _ -> error "bad param mode"
-      y <- case pMode2 of
-        0 -> V.read v yi
-        1 -> pure yi
-        _ -> error "bad param mode"
-      if x == 0 then runIntCode (i + 3) v else runIntCode y v
-    6 -> do
-      let
-        xii = i + 1
-        yii = i + 2
-      xi <- V.read v xii
-      yi <- V.read v yii
-      x <- case pMode1 of
-        0 -> V.read v xi
-        1 -> pure xi
-        _ -> error "bad param mode"
-      y <- case pMode2 of
-        0 -> V.read v yi
-        1 -> pure yi
-        _ -> error "bad param mode"
-      if x == 0 then runIntCode y v else runIntCode (i + 3) v
-    7 -> do
-      let
-        xii = i + 1
-        yii = i + 2
-        zi = i + 3
-      xi <- V.read v xii
-      yi <- V.read v yii
-      x <- case pMode1 of
-        0 -> V.read v xi
-        1 -> pure xi
-        _ -> error "bad param mode"
-      y <- case pMode2 of
-        0 -> V.read v yi
-        1 -> pure yi
-        _ -> error "bad param mode"
-      z <- case pMode3 of
-        0 -> V.read v zi
-        1 -> pure zi
-        _ -> error "bad param mode"
-      if x < y then V.write v z 1 else V.write v z 0
-      runIntCode (i + 4) v
-    8 -> do
-      let
-        xii = i + 1
-        yii = i + 2
-        zi = i + 3
-      xi <- V.read v xii
-      yi <- V.read v yii
-      x <- case pMode1 of
-        0 -> V.read v xi
-        1 -> pure xi
-        _ -> error "bad param mode"
-      y <- case pMode2 of
-        0 -> V.read v yi
-        1 -> pure yi
-        _ -> error "bad param mode"
-      z <- case pMode3 of
-        0 -> V.read v zi
-        1 -> pure zi
-        _ -> error "bad param mode"
-      if x == y then V.write v z 1 else V.write v z 0
-      runIntCode (i + 4) v
-    99 -> pure v
-    _ -> error "Input was bad or machine failed"
 
 day3p1 :: IO ()
 day3p1 = do
@@ -505,7 +351,7 @@ day5p1 = do
     initial = V.fromList vals
 
   mem :: Memory <- V.thaw initial
-  result :: Vector Int <- runIntCode 0 mem >>= V.freeze
+  result :: Vector Int <- runIntCodeLegacy 0 mem >>= V.freeze
   print result
 
 day5p2 :: IO ()
@@ -661,3 +507,112 @@ bfs src end graph = go (S.empty) (Seq.fromList [(src, 0)])
 
 makeAlgebraGraph :: [(Text, Text)] -> AdjacencyMap Text
 makeAlgebraGraph = AM.edges
+
+day7p1 :: IO ()
+day7p1 = do
+  list :: [Int] <- map tToI <$> T.splitOn "," <$> T.readFile "data/day7-1"
+  let
+    -- initialValues = V.fromList
+    --   [3,15,3,16,1002,16,10,16,1,16,15,15,4,15,99,0,0]
+    initialValues = V.fromList list
+  mem :: Memory <- V.thaw initialValues
+  -- res <- runIntCodeLegacy2 [4, 0] 0 mem >>= V.freeze
+  -- res <- runIntCodeLegacy2 [3, 4] 0 mem >>= V.freeze
+  -- res <- runIntCodeLegacy2 [2, 43] 0 mem >>= V.freeze
+  -- res <- runIntCodeLegacy2 [1, 432] 0 mem >>= V.freeze
+  -- output :: Either String [Int]
+  --   <- runIntCodeLegacy3 0
+  --     & runReader mem
+  --     & execWriter
+  --     & evalState [0 :: Int, 4321]
+  --     & runError
+
+  output2 :: Either String Int
+    <- loop [4,3,2,1,0] (Seq.singleton 0) initialValues  & runError
+
+  let
+    -- output3 :: [IO (Either String Int)]
+  output3 :: [Either String Int] <-
+    traverse
+      (\phase -> loop phase (Seq.singleton 0) initialValues & runError)
+      allCombs
+  let
+    output4 :: Int
+    output4 = maximum $ map (fromRight 0) output3
+
+  -- ErrorC E (ReaderC Mem (WriterC W (StateC S IO))) A
+  --          (ReaderC Mem (WriterC W (StateC S IO))) (Either E A)
+  --                        WriterC W (StateC S IO) (Either E A)
+  --                                  (StateC S IO) (W, Either E A)
+  --                                  IO (S, (W, Either E A))
+
+  --         (ReaderC Mem (WriterC W (StateC S (ErrorC E IO))) A
+  --                      (WriterC W (StateC S (ErrorC E IO))) A
+  --                                 (StateC S (ErrorC E IO))) (W, A)
+  --                                           (ErrorC E IO)   (S, (W, A))
+
+  --                                                 IO    Either E (S, (W, A))
+  --                                  IO  S
+    -- [0, 4321] [] 0 mem >>= V.freeze
+
+  print output4
+  -- print initialValues
+  where
+    loop
+      :: (Has (Error String) sig m, Effect sig, MonadIO m)
+      => [Int] -- phase
+      -> Seq Int -- input
+      -> Vector Int -- values
+      -> m Int
+    loop [] Seq.Empty _ = throwError @String "wut"
+    loop [] (x :<| _) _ = pure x
+    loop (x:xs) input vals = do
+      mem :: Memory <- liftIO $ V.thaw vals
+      output :: Seq Int <- runIntCode 0
+        & runReader mem
+        & execState (x :<| input)
+      loop xs output vals
+
+    allCombs = permutations [0..4]
+
+-- TODO: I realize I need some sort of blocking queue or something to use
+-- for reading input and writing output to. I'll do that later, I suppose.
+day7p2 :: IO ()
+day7p2 = do
+  list :: [Int] <- map tToI <$> T.splitOn "," <$> T.readFile "data/day7-1"
+  let
+    -- initialValues :: Vector Int
+    -- initialValues = V.fromList
+    --   [3,26,1001,26,-4,26,3,27,1002,27,2,27,1,27,26,
+    --     27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5]
+    initialValues = V.fromList list
+  output :: Either String Int
+    <- loop [9,8,7,6,5] (Seq.singleton 0) initialValues & runError
+  output3 :: [Either String Int] <-
+    traverse
+      (\phase -> loop phase (Seq.singleton 0) initialValues & runError)
+      allCombs
+  let
+    output4 :: Int
+    output4 = maximum $ map (fromRight 0) output3
+
+  print output4
+  -- undefined
+
+  where
+    loop
+      :: (Has (Error String) sig m, Effect sig, MonadIO m)
+      => [Int] -- phase
+      -> Seq Int -- input
+      -> Vector Int -- values
+      -> m Int
+    loop [] (Seq.Empty) _ = throwError @String "wut"
+    loop [] (x :<| _) _ = pure x
+    loop (x:xs) input vals = do
+      mem :: Memory <- liftIO $ V.thaw vals
+      output :: Seq Int <- runIntCode 0
+        & runReader mem
+        & execState (x :<| input)
+      loop xs output vals
+
+    allCombs = permutations [5..9]

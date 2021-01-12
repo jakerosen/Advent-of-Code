@@ -1,0 +1,37 @@
+cabal-version: 2.4
+name: advent
+version: 0
+
+executable advent
+  build-depends:
+      base
+    , text
+    , lens
+    , vector
+    , primitive
+    -- , sets
+    , unordered-containers
+    , hashable
+    , containers
+    , reducers
+    , algebraic-graphs
+    , mtl
+    , fused-effects
+    , split
+    , array
+    , generic-lens
+    , transformers
+  default-extensions:
+      ScopedTypeVariables
+    , OverloadedStrings
+    , DerivingStrategies
+    , DeriveGeneric
+    , TypeApplications
+    , DataKinds
+    , OverloadedLabels
+    , BlockArguments
+    , LambdaCase
+    , MultiWayIf
+  ghc-options: -Wall -O
+  main-is: Main.hs
+  other-modules:
