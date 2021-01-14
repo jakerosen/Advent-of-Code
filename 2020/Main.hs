@@ -36,8 +36,8 @@ import GHC.Generics (Generic)
 import Control.Arrow ((>>>))
 import Control.Algebra
 import Control.Carrier.State.Strict
--- import Data.Sequence (Seq)
--- import qualified Data.Sequence as Seq
+import Data.Sequence (Seq, Seq ((:<|), (:|>)))
+import qualified Data.Sequence as Seq
 -- import Data.Word
 import Data.Bits
 import Numeric (readInt)
@@ -46,7 +46,7 @@ import Control.Monad.ST
 -- import Control.Applicative.Lift
 
 main :: IO ()
-main = d16p1
+main = d17p2
 
 tToI :: Integral a => Text -> a
 tToI x = T.signed T.decimal x
@@ -225,7 +225,6 @@ d4p2EvalPass passport = byr && iyr && eyr && hgt && hcl && ecl && pid
     pid = case M.lookup "pid" passport of
       Nothing -> False
       Just p -> T.length p == 9 && T.all isDigit p
-
 
 keySplit :: Text -> (Text, Text)
 keySplit t = (head keyVal, keyVal !! 1)
@@ -535,7 +534,6 @@ d9p2FindWeakness x v = go 0
         Just val ->
           evalSeq (acc + val) (val:sequ) (j+1) -- keep evaluating
       | otherwise -> error "wut how was I getting a non-exhaustive warning"
-      -- where val = v ! j
 
     go :: Int -> [Int]
     go i
@@ -1571,7 +1569,262 @@ d15p2 = do
 
   print ans
 
+d16Parse :: Text -> ([(Text, ((Int, Int), (Int, Int)))], ([Int], [[Int]]))
+d16Parse = T.lines
+  >>> splitAt 20
+  >>> _1 %~ map (T.splitOn ": " >>> splitAt 1 >>> both %~ head)
+  >>> _1 %~ map (_2 %~ (T.splitOn " or " >>> splitAt 1 >>> both %~ head))
+  >>> _1 %~ map (_2.both %~ (T.split (=='-')
+    >>> splitAt 1
+    >>> both %~ (head >>> tToI)
+    ))
+  >>> _2 %~ (drop 2 >>> splitAt 1)
+  >>> _2._1 %~ (head
+    >>> T.split (==',') >>> map tToI)
+  >>> _2._2 %~ (drop 2
+    >>> map (T.split (==',') >>> map tToI))
+
+d16ParseRangesAll :: [(Text, ((Int, Int), (Int, Int)))] -> Set Int
+d16ParseRangesAll = foldr f S.empty
+  where
+    f (_, ((a, b), (c, d))) s =
+      S.union s (S.union (S.fromList [a..b]) (S.fromList[c..d]))
+
 d16p1 :: IO ()
 d16p1 = do
+  m <- T.readFile "data/d16p1.txt"
+    <&> d16Parse
 
-  undefined
+  let
+    (fields, (myTicket, otherTickets)) = m
+    ranges = d16ParseRangesAll fields
+    bads = foldr f [] otherTickets
+      where
+        f ticket bs = filter (`S.notMember` ranges) ticket ++ bs
+    ans = sum bads
+
+  print ranges
+  print myTicket
+  print bads
+  print ans
+
+d16p2ParseRanges :: [(Text, ((Int, Int), (Int, Int)))] -> Map Text (Set Int)
+d16p2ParseRanges = M.fromList . map (_2 %~ \((a, b), (c, d)) ->
+  S.union (S.fromList [a..b]) (S.fromList[c..d]))
+
+d16p2Go :: [Vector Int] -> Map Text (Set Int) -> Map Text Int
+d16p2Go tickets ranges =
+  go (Seq.fromList (M.keys ranges)) initPossibleLoc M.empty
+  where
+    go :: Seq Text -> Map Text (Set Int) -> Map Text Int -> Map Text Int
+    go Seq.Empty _ finalLoc = finalLoc
+    go (field :<| q) possibleLoc finalLoc = if S.size locs' == 1
+      then
+        let
+          loc = S.elemAt 0 locs'
+          possibleLoc' = M.map (S.delete loc) (M.delete field possibleLoc)
+          finalLoc' = M.insert field loc finalLoc
+        in go q possibleLoc' finalLoc'
+      else go (q :|> field) possibleLoc finalLoc
+      where
+        locs = case possibleLoc !? field of
+          Nothing -> error "invalid field in queue"
+          Just ls -> ls
+
+        -- test i against all vectors in tickets; if any fail, remove i from
+        -- ls
+        locs' = S.foldl' (\ls i -> if any (\v ->
+            S.notMember (v ! i) (ranges M.! field)
+          ) tickets
+          then S.delete i ls
+          else ls
+          ) locs locs
+
+    initPossibleLoc =
+      M.fromList $ zip (M.keys ranges) (repeat $ S.fromList [0..19])
+
+-- My plan is to basically have some sort of queue that keeps track of the
+-- fields that have yet to find their spot.  I will have a Map of the possible
+-- locations that a field can still go.  When a field's possible locations is
+-- narrowed down to 1, then that is the location for that field, and I will
+-- remove it from the queue, and also remove that location as a possible
+-- location from all other fields.  I might also put that field into a
+-- separate Map that keeps track of the final locations for the fields for
+-- convenience, so I don't have to worry about the field's possible location
+-- being preserved in the Map that keeps track of field's possible locations.
+--
+-- When it is a field's turn in the queue, first it will check to see if it
+-- has been narrowed down to a single location yet.  If so, it will do what
+-- I said previously and then move to the next field until the queue is empty.
+-- If it is not yet narrowed down, it will check the locations of each ticket.
+-- If it finds an invalidation, then it will remove that location from its
+-- list of possible locations.  Because I need to keep track of the indices
+-- of each ticket, I will likely want the tickets to be Vector Int.  After
+-- it is finished narrowing down its possible locations, it will check again
+-- to see if it has been narrowed down to a single location.  If so, it does
+-- the stuff I mentioned previously.  If not, then it's not possible to narrow
+-- this field to 1 location yet, so it will put it at the end of the queue and
+-- move to the next entry.  The idea is to continue doing this until the queue
+-- is empty, which must happen at some point.  I believe the queue will be a
+-- Sequence.
+d16p2 :: IO ()
+d16p2 = do
+  m <- T.readFile "data/d16p1.txt"
+    <&> d16Parse
+
+  let
+    (fields, (myTicket, otherTickets)) = m
+    allRanges = d16ParseRangesAll fields
+    ranges = d16p2ParseRanges fields
+    validTickets = myTicket : filter (all (`S.member` allRanges)) otherTickets
+
+    finalLocations = d16p2Go (map V.fromList validTickets) ranges
+    myTicketV = V.fromList myTicket
+    is = M.elems $ M.filterWithKey
+      (\t _ -> T.isPrefixOf "departure" t)
+      finalLocations
+    departureVals = map (myTicketV !) is
+    ans = product departureVals
+
+  print myTicket
+  print finalLocations
+  print departureVals
+  print ans
+
+d17p1Neighbors :: (Int, Int, Int) -> [(Int, Int, Int)]
+d17p1Neighbors (x, y, z) =
+  [ (a,b,c)
+  | a <- [x-1 .. x+1]
+  , b <- [y-1 .. y+1]
+  , c <- [z-1 .. z+1]
+  , a /= x || b /= y || c /= z
+  ]
+
+d17p1Cycle :: Set (Int, Int, Int) -> Set (Int, Int, Int)
+d17p1Cycle active = active'
+  where
+    tally :: Map (Int, Int, Int) Int
+    tally = S.foldr (\cube m ->
+      foldr (\neighbor -> M.insertWith (+) neighbor 1) m (d17p1Neighbors cube))
+      M.empty active
+
+    tally' :: Map (Int, Int, Int) Int
+    tally' = M.filter (\x -> x == 2 || x == 3) tally
+
+    candidates :: [(Int, Int, Int)]
+    candidates = M.keys tally'
+
+    active' :: Set (Int, Int, Int)
+    active' = S.fromList $ filter
+      (\cube -> S.member cube active || tally' M.! cube == 3)
+      candidates
+
+-- This seems hard because trying to brute force it probably isn't possible.
+-- Each cycle multiplies the cube size by 26, so that would reach over 10
+-- billion.  That's not a number that is out of this world huge, but it's
+-- probably big enough where I won't be able to simply do it the naive way.
+--
+-- My plan at the moment is to keep track of "cubes I'm interested in", and
+-- I think I might have something like a tally Map to keep track of the number
+-- of times a cube is "touched" by active cubes.  If a cube is "touched" by
+-- 2 or 3 active cubes, I'll look closer and determine whether it should
+-- turn on, remain on, turn off, or remain off.  If a cube is not "touched"
+-- by exactly 2 or 3 active cubes, then it should be turned off, regardless
+-- of its previous state.
+--
+-- So I believe that I will maintain a Set of active cubes and a tally Map
+-- of how many times an active cube has touched that position during the
+-- cycle.  Each cycle, I will iterate through the list of active cubes and
+-- have each of them update the tally Map based on which of their neighbors
+-- that they touched.  Since the number of active cubes should be far smaller
+-- than the total number of cubes in the 3D space that I could potentially
+-- touch, this should not be too much iteration.  Then, after I am finished
+-- updating the tally Map for the cycle, I check the Tally map and update the
+-- cube states according to the rules.  If a cube is active and has 2 or 3
+-- cubes in its tally, then it stays on (I'd probably do this by simply making
+-- a new "active cubes" Set and adding the cube to it).  If a cube is inactive
+-- and has exactly 3 cubes in its tally, turn it on (add it to the Set).  All
+-- other cubes would turn off or remain off (simply don't add them to the new
+-- Set).  Each cycle should start with a new "active cubes" Set and an empty
+-- tally Map.
+--
+-- A note about iterate because I had originally gotten the wrong answer
+-- due to my unthinking misinterpretation of it: the first elemnent of iterate
+-- (index 0) is zero iterations.  The second element (index 1) is the 1st
+-- iteration, and so on.  I had originally thought that cycle 6 would be
+-- element 6 (index 5), but it is actually element 7 (index 6).
+d17p1 :: IO ()
+d17p1 = do
+  active :: Set (Int, Int, Int) <- T.readFile "data/d17p1.txt"
+    <&> T.lines
+    <&> map T.unpack
+    <&> map (filter (\(_,c) -> c=='#') . zip [0..])
+    <&> zip [0..]
+    <&> concatMap (\(y, xs) -> map (\(x, _) -> (x, y, 0)) xs)
+    <&> S.fromList
+
+  let
+    sixthCycleActive :: Set (Int, Int, Int)
+    sixthCycleActive = iterate d17p1Cycle active !! 6
+
+    ans = S.size sixthCycleActive
+
+    foo = take 10 $ iterate d17p1Cycle active
+    boo = map S.size foo
+
+  print active
+  print ans
+  print boo
+
+d17p2Neighbors :: (Int, Int, Int, Int) -> [(Int, Int, Int, Int)]
+d17p2Neighbors (x, y, z, w) =
+  [ (a,b,c,d)
+  | a <- [x-1 .. x+1]
+  , b <- [y-1 .. y+1]
+  , c <- [z-1 .. z+1]
+  , d <- [w-1 .. w+1]
+  , a /= x || b /= y || c /= z || d /= w
+  ]
+
+d17p2Cycle :: Set (Int, Int, Int, Int) -> Set (Int, Int, Int, Int)
+d17p2Cycle active = active'
+  where
+    tally :: Map (Int, Int, Int, Int) Int
+    tally = S.foldr (\cube m ->
+      foldr (\neighbor -> M.insertWith (+) neighbor 1) m (d17p2Neighbors cube))
+      M.empty active
+
+    tally' :: Map (Int, Int, Int, Int) Int
+    tally' = M.filter (\x -> x == 2 || x == 3) tally
+
+    candidates :: [(Int, Int, Int, Int)]
+    candidates = M.keys tally'
+
+    active' :: Set (Int, Int, Int, Int)
+    active' = S.fromList $ filter
+      (\cube -> S.member cube active || tally' M.! cube == 3)
+      candidates
+
+d17p2 :: IO ()
+d17p2 = do
+  active :: Set (Int, Int, Int, Int) <- T.readFile "data/d17p1.txt"
+    <&> T.lines
+    <&> map T.unpack
+    <&> map (filter (\(_,c) -> c=='#') . zip [0..])
+    <&> zip [0..]
+    <&> concatMap (\(y, xs) -> map (\(x, _) -> (x, y, 0, 0)) xs)
+    <&> S.fromList
+
+  let
+    -- HEY FUCK YOU FUCK ASS MULTIPLE CURSORS
+    sixthCycleActive :: Set (Int, Int, Int, Int)
+    sixthCycleActive = iterate d17p2Cycle active !! 6
+
+    ans = S.size sixthCycleActive
+
+    foo = take 10 $ iterate d17p2Cycle active
+    boo = map S.size foo
+
+  print active
+  print ans
+  print boo
