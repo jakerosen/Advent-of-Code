@@ -21,6 +21,7 @@ executable advent
     , array
     , generic-lens
     , transformers
+    , monadlist
   default-extensions:
       ScopedTypeVariables
     , OverloadedStrings

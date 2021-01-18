@@ -26,8 +26,7 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Maybe
 import Data.Either
--- import Control.Monad.State.Lazy (State)
--- import qualified Control.Monad.State.Lazy as S
+import qualified Control.Monad.State.Lazy as State
 import Control.Applicative
 import Control.Lens hiding (children)
 import Data.Generics.Labels ()
@@ -44,9 +43,10 @@ import Numeric (readInt)
 import Control.Monad.ST
 -- import Control.Monad.IO.Class (liftIO)
 -- import Control.Applicative.Lift
+import Control.Monad.ListM
 
 main :: IO ()
-main = d17p2
+main = d18p2
 
 tToI :: Integral a => Text -> a
 tToI x = T.signed T.decimal x
@@ -1828,3 +1828,293 @@ d17p2 = do
   print active
   print ans
   print boo
+
+-- So, the problem here is that I need a stateful flag to keep track of
+-- paren matching.  I believe that I can use spanM to get what I want inside
+-- of some monad that keeps track of state.
+--
+-- Maybe even groupByM
+-- I think grouopByM would work.  The M would keep track of my paren matching
+-- flag and when I find the token begins with '(' ...
+--
+-- Alright, what I don't like about groupByM is that it takes 2 elements in
+-- its grouping operation, but I really only want to consider 1.  That seems
+-- like it's asking for trouble.  On the other hand, spanM should do what I
+-- want, but might take more work.
+--
+-- I looked at the internals of groupByM and I think it might actually work.
+-- It calls spanM (f x) to group the elements into (ys, zs).  Basically, the
+-- first element x would set the flag if it's '(', or not do so if it isn't,
+-- and the second element would be the work horse for spanM, which would do
+-- the paren matching flag counting, and it would ultimately turn off the flag
+-- (set to 0) when it's done.  I think that ultimately works.
+--
+-- Ahhh.  Actually, I looked at the internals for spanM and I think it won't
+-- work because spanM repeatedly calls its predicate whenever there is a
+-- successful match (to look for the next match).  Since the predicate passed
+-- in by groupByM is (f x), I would get f x y called multiple times, which
+-- would act as if I found a new '(' flag every time, so the paren matching
+-- would never end.
+--
+-- I now believe that I just have to roll my own grouping function that uses
+-- spanM.
+--
+-- Okay, so the major problem I'm running into is that spanM doesn't actually
+-- quite do what I want it to do.  spanM works by taking a preticate to
+-- evaluate whether something is "in" or "out", but what I really want is
+-- for everything to be considered "in" its own group, while things inside of
+-- a parenthesis are "in" the self same group.  The behavior of spanM that
+-- considers paren matching to be "in" and everything else "out"
+-- consequentially leaves entities that I WANT to be singletons in their own
+-- group outside of "their own group", and merely grouped up with everything
+-- else... which isn't helpful.
+--
+-- I seem to have fixed my problem in a somewhat ugly way, but I guess it is
+-- exactly what I wanted to do, so it makes sense that that's what I needed
+-- to do.  I basically do the first check separately from other checks where
+-- there are two cases: either it's an open paren, in which case I want to
+-- do spanM and have everything inside of the parens added into that group,
+-- or it's not an open paren, in which case it should just be in a group by
+-- itself and I don't use spanM at all.  I just throw it in its own group and
+-- call the function agin with the rest of the list.
+--
+-- State Int [[Char]] ??
+-- The Int is a count of the paren matching, init to 0 and +1 when I find (,
+-- -1 when I find ), if it's 0 then I'm not paren matching.
+d18p1Parse :: [[Char]] -> [[[Char]]]
+d18p1Parse t = State.evalState (groupParens [] t) 0
+  where
+    parenMatch :: [Char] -> State.State Int Bool
+    parenMatch xs = do
+      count <- State.get
+      let
+        count' :: Int
+        count' = foldl' (\acc c -> if
+          | c == '(' -> acc + 1
+          | c == ')' -> acc - 1
+          | otherwise -> acc
+          ) count xs
+
+      put count'
+
+      -- I want first ( and last ) to be included in the group
+      return (count >= 1 || count' >= 1)
+
+    groupParens :: [[[Char]]] -> [[Char]] -> State.State Int [[[Char]]]
+    groupParens acc [] = return acc
+    groupParens acc (x:xs) = do
+      matched <- parenMatch x
+      if matched
+        then do
+          (ys, zs) :: ([[Char]], [[Char]]) <- spanM parenMatch (xs)
+          let
+            -- The init and tail part are to remove the outer parens -- I
+            -- don't need them anymore.  With the outer parens removed, This
+            -- group is now viable to be called with the same parsing function
+            -- to be parsed in the same way, to parse inner parens.
+            lastElem = last ys
+            ys' = init ys ++ [init lastElem]
+            parenGroup = (tail x : ys')
+          groupParens (parenGroup : acc) zs
+        else groupParens ([x]:acc) xs
+
+safeHead :: [a] -> Maybe a
+safeHead [] = Nothing
+safeHead (x:_) = Just x
+
+d18p1Eval :: [[[Char]]] -> Int
+d18p1Eval [] = 0
+d18p1Eval (x:[]) = if length cured > 1
+  then d18p1Eval cured
+  else (fromJust . fmap read . (>>= safeHead) . safeHead) cured
+  where
+    cured = d18p1Parse x
+d18p1Eval (x:operation:xs) = d18p1Eval cured `f` d18p1Eval xs
+  where
+    f = case operation of
+      ('+':[]):[] -> (+)
+      ('*':[]):[] -> (*)
+      _ -> error "Invalid operation"
+
+    cured = d18p1Parse x
+
+
+d18p1 :: IO ()
+d18p1 = do
+  m <- T.readFile "data/d18p1.txt"
+    <&> T.lines
+    <&> map T.unpack
+    <&> map words
+    <&> map d18p1Parse
+
+  let
+    -- m = d18p1Parse (words "(8 + 5 + 5)")
+    -- n = d18p1Parse (words "8 + 5 + 5")
+    ansList = map d18p1Eval m
+    ans = sum ansList
+    -- foo = head $ map d18p1Eval m
+
+    -- issue :: [Char]
+    -- issue = "2 * ((5 * 5 + 9 * 5 * 3 + 7) + (8 * 8 + 4) + 7) * 7"
+
+    -- bar = d18p1Parse (words issue)
+
+    -- har = d18p1Eval bar
+
+    -- issue2 :: [Char]
+    -- issue2 = "(8 + 5 + 5) + (8 + (2 * 6) + (6 * 6 * 9 * 8) + 3 + 9 * 8)"
+
+    -- sue = d18p1Parse (words issue2)
+    -- loo = d18p1Eval sue
+
+  -- print $ head m
+  -- print m
+  -- print n
+  -- print $ length n
+  -- print $ m !! 1
+  -- print ansList
+  -- print foo
+  -- print bar
+  -- print har
+  -- print sue
+  -- print loo
+  print ans
+
+(<<+>>) :: Num a => a -> a -> a
+(<<+>>) = (+)
+infixl 7 <<+>>
+
+(<<*>>) :: Num a => a -> a -> a
+(<<*>>) = (*)
+infixl 6 <<*>>
+
+data D18Op = D18Plus | D18Times
+  deriving Show
+
+data D18Expr = D18Leaf Int
+  | D18Expr D18Op D18Expr D18Expr
+  | D18Strict D18Expr
+  deriving Show
+
+-- This is just the reversed form of the p1 parse.
+d18p1Parse' :: [[Char]] -> [[[Char]]]
+d18p1Parse' t = reverse $ State.evalState (groupParens [] t) 0
+  where
+    parenMatch :: [Char] -> State.State Int Bool
+    parenMatch xs = do
+      count <- State.get
+      let
+        count' :: Int
+        count' = foldl' (\acc c -> if
+          | c == '(' -> acc + 1
+          | c == ')' -> acc - 1
+          | otherwise -> acc
+          ) count xs
+
+      put count'
+
+      -- I want first ( and last ) to be included in the group
+      return (count >= 1 || count' >= 1)
+
+    groupParens :: [[[Char]]] -> [[Char]] -> State.State Int [[[Char]]]
+    groupParens acc [] = return acc
+    groupParens acc (x:xs) = do
+      matched <- parenMatch x
+      if matched
+        then do
+          (ys, zs) :: ([[Char]], [[Char]]) <- spanM parenMatch (xs)
+          let
+            -- The init and tail part are to remove the outer parens -- I
+            -- don't need them anymore.  With the outer parens removed, This
+            -- group is now viable to be called with the same parsing function
+            -- to be parsed in the same way, to parse inner parens.
+            lastElem = last ys
+            ys' = init ys ++ [init lastElem]
+            parenGroup = (tail x : ys')
+          groupParens (parenGroup : acc) zs
+        else groupParens ([x]:acc) xs
+
+d18p2Parse :: [[[Char]]] -> D18Expr
+d18p2Parse [] = error "Invalid expression"
+d18p2Parse (x:[]) = if length cured > 1
+  then D18Strict (d18p2Parse cured)
+  else D18Leaf (read (head (head cured)))
+  where
+    cured = d18p1Parse' x
+d18p2Parse (x:operation:xs) = D18Expr f (d18p2Parse cured) (d18p2Parse xs)
+  where
+    f = case operation of
+      ('+':[]):[] -> D18Plus
+      ('*':[]):[] -> D18Times
+      _ -> error "Invalid operation"
+    cured = d18p1Parse' x
+
+d18p2Eval :: D18Expr -> Int
+d18p2Eval expr = go [] expr
+  where
+    -- product stack -> expr tree -> result
+    go :: [Int] -> D18Expr -> Int
+    go s (D18Leaf x) = x * product s
+    go s (D18Expr operation left right) = case operation of
+      -- Eval left side, find next left val on right side, add together,
+      -- then paste back together with that result on left side
+      D18Plus -> case right of
+        D18Leaf x -> (leftEval + x) * product s
+        D18Expr operation' l' r' ->
+          let
+            nextVal = d18p2Eval l'
+            newLeft = leftEval + nextVal
+          in go s (D18Expr operation' (D18Leaf newLeft) r')
+        D18Strict expr' -> (leftEval + d18p2Eval expr') * product s
+
+      -- Eval left side, add to product stack, then continue with right side
+      D18Times -> go (leftEval : s) right
+      where
+        leftEval = d18p2Eval left
+
+    go s (D18Strict expr') = d18p2Eval expr' * product s
+
+-- Grr I don't like this one.  Figuring out the structure to get it into an
+-- evaluatable form is tricky.
+--
+-- Ahh that was hard.  I finally got it.  My plan to put it into an evaluation
+-- tree mostly worked but I ran into a problem where + was ignoring parens and
+-- I realized that I needed some way to evaluate something strictly.
+-- Thankfully, adding a 3rd case to my evaluation tree that is simply a strict
+-- wrapper around a tree node worked properly.
+d18p2 :: IO ()
+d18p2 = do
+  m <- T.readFile "data/d18p1.txt"
+    <&> T.lines
+    <&> map T.unpack
+    <&> map words
+    <&> map d18p1Parse'
+    <&> map d18p2Parse
+
+  let
+    ansList = map d18p2Eval m
+    ans = sum ansList
+
+    -- foo = m !! 0
+    -- boo = d18p2Eval foo
+
+    -- issue = "(8 + 5 + 5) + (8 + (2 * 6) + (6 * 6 * 9 * 8) + 3 + 9 * 8)"
+    -- baz = d18p1Parse' (words issue)
+    -- gaz = d18p2Parse baz
+    -- naz = d18p2Eval gaz
+
+    -- wank = d18p1Parse (words issue)
+    -- gank = d18p1Eval wank
+
+  -- print a
+  -- print b
+  -- print foo
+  -- print boo
+
+  -- print baz
+  -- print gaz
+  -- print naz
+  -- print haz
+  -- print gank
+
+  print ans
