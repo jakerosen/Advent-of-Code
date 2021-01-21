@@ -14,7 +14,6 @@ executable advent
     , hashable
     , containers
     , reducers
-    , algebraic-graphs
     , mtl
     , fused-effects
     , split
@@ -22,6 +21,7 @@ executable advent
     , generic-lens
     , transformers
     , monadlist
+    , parsec
   default-extensions:
       ScopedTypeVariables
     , OverloadedStrings
@@ -33,6 +33,9 @@ executable advent
     , BlockArguments
     , LambdaCase
     , MultiWayIf
+    , InstanceSigs
   ghc-options: -Wall -O
   main-is: Main.hs
   other-modules:
+    Old
+    Helpers
