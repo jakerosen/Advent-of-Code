@@ -1,4 +1,4 @@
-cabal-version: 2.4
+cabal-version: 3.6
 name: advent
 version: 0
 
@@ -6,22 +6,22 @@ executable advent
   build-depends:
       base
     , text
-    , lens
-    , vector
-    , primitive
-    -- , sets
-    , unordered-containers
-    , hashable
-    , containers
-    , reducers
-    , mtl
-    , fused-effects
-    , split
-    , array
-    , generic-lens
-    , transformers
-    , monadlist
-    , parsec
+    -- , lens
+    -- , vector
+    -- , primitive
+    -- -- , sets
+    -- , unordered-containers
+    -- , hashable
+    -- , containers
+    -- , reducers
+    -- , mtl
+    -- , fused-effects
+    -- , split
+    -- , array
+    -- , generic-lens
+    -- , transformers
+    -- , monadlist
+    -- , parsec
   default-extensions:
       ScopedTypeVariables
     , OverloadedStrings
@@ -38,5 +38,5 @@ executable advent
   ghc-options: -Wall -O
   main-is: Main.hs
   other-modules:
-    Old
+    -- Old
     Helpers
